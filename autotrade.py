@@ -9,6 +9,7 @@ from openai import OpenAI
 import schedule
 import time
 from datetime import datetime
+import slack_notification as sn
 
 # Setup
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
@@ -143,26 +144,30 @@ def make_decision_and_execute():
     print("현재 날짜와 시간:", current_datetime.strftime("%Y-%m-%d %H:%M:%S"))
     print("Making decision and executing...")
     data_json = fetch_and_prepare_data()
-    advice = analyze_data_with_gpt4(data_json)
+    advice_json = analyze_data_with_gpt4(data_json)
 
     try:
-        decision = json.loads(advice)
-        print(decision)
-        if decision.get('decision') == "buy":
+        advice = json.loads(advice_json)
+        decision = advice.get('decision')
+        reason = advice.get('reason')
+        print(advice)
+
+        if decision == "buy":
             execute_buy()
-        elif decision.get('decision') == "sell":
+        elif decision == "sell":
             execute_sell()
+
+        # slack notification
+        sn.send_msg(f"decision: {decision} \nreason: {reason}")
+
     except Exception as e:
         print(f"Failed to parse the advice as JSON: {e}")
 
 if __name__ == "__main__":
     print("started...")
-    #make_decision_and_execute()
+    make_decision_and_execute()
     schedule.every().hour.at(":01").do(make_decision_and_execute)
 
     while True:
         schedule.run_pending()
         time.sleep(1)
-
-# 맨처음 금액
-#   498,488원
