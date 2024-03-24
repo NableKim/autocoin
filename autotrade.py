@@ -27,8 +27,7 @@ def get_current_status():
             btc_balance = b['balance']
             btc_avg_buy_price = b['avg_buy_price']
         if b['currency'] == "KRW":
-            krw_balance = b['balance'] if float(b['balance']) < 100000 else "100000" # 최대 10만원만 사용
-            #krw_balance = b['balance']
+            krw_balance = b['balance']     
 
     current_status = {'current_time': current_time, 'orderbook': orderbook, 'btc_balance': btc_balance, 'krw_balance': krw_balance, 'btc_avg_buy_price': btc_avg_buy_price}
     return json.dumps(current_status)
@@ -93,6 +92,7 @@ def get_instructions(file_path):
         print("An error occurred while reading the file:", e)
 
 def analyze_data_with_gpt4(data_json):
+    print("Getting an advise from GPT...")
     instructions_path = "instructions.md"
     try:
         instructions = get_instructions(instructions_path)
@@ -117,25 +117,39 @@ def analyze_data_with_gpt4(data_json):
         print(f"Error in analyzing data with GPT-4: {e}")
         return None
 
-def execute_buy():
+def execute_buy(percentage):
     print("Attempting to buy BTC...")
     try:
-        krw = upbit.get_balance("KRW")
-        krw = krw if krw < 100000 else 100000 # 최대 10만원만 사용
-        if krw > 5000:
-            result = upbit.buy_market_order("KRW-BTC", krw*0.9995)
+        balance_krw = upbit.get_balance("KRW")
+        percentage = percentage / 100 # 백분율 만들기
+        amount = balance_krw * percentage
+
+        print(f"buy. current_balance: {balance_krw}, percentage: {percentage*100}%, amount: {amount}")
+        
+        # 업비트 최소 거래 금액 5000원 이상
+        if amount > 5000:
+            print(f"구매 실행. 현금보유량: {balance_krw}, 실제 매수량: {amount*0.9995}")
+            result = upbit.buy_market_order("KRW-BTC", amount*0.9995)
             print("Buy order successful:", result)
     except Exception as e:
         print(f"Failed to execute buy order: {e}")
 
-def execute_sell():
+def execute_sell(percentage):
     print("Attempting to sell BTC...")
     try:
-        btc = upbit.get_balance("BTC")
+        btc_balance = upbit.get_balance("BTC") # 현재 보유한 코인 수
+        percentage = percentage / 100 # 백분율 만들기
+        btc_to_sell = btc_balance * percentage
+
+        print(f"sell. current_balance: {btc_balance}, percentage: {percentage*100}%, btc_to_sell: {btc_to_sell}")
+
         current_price = pyupbit.get_orderbook(ticker="KRW-BTC")['orderbook_units'][0]["ask_price"]
-        if current_price*btc > 5000:
-            result = upbit.sell_market_order("KRW-BTC", btc)
+        if current_price*btc_to_sell > 5000:
+            print(f"판매 실행. 보유량: {btc_balance}, 실제 매도량: {btc_to_sell}")
+            result = upbit.sell_market_order("KRW-BTC", btc_to_sell)
             print("Sell order successful:", result)
+        else:
+            print(f"판매 실패. 보유량: {btc_balance}, 실제 매도량: {btc_to_sell}")
     except Exception as e:
         print(f"Failed to execute sell order: {e}")
 
@@ -150,15 +164,17 @@ def make_decision_and_execute():
         advice = json.loads(advice_json)
         decision = advice.get('decision')
         reason = advice.get('reason')
+        percentage = advice.get('percentage')
+        
         print(advice)
 
         if decision == "buy":
-            execute_buy()
+            execute_buy(percentage)
         elif decision == "sell":
-            execute_sell()
+            execute_sell(percentage)
 
         # slack notification
-        sn.send_msg(f"decision: {decision} \nreason: {reason}")
+        sn.send_msg(f"decision: {decision} \npercentage: {percentage} \nreason: {reason}")
 
     except Exception as e:
         print(f"Failed to parse the advice as JSON: {e}")
