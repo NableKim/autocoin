@@ -1,6 +1,5 @@
 import os
 from dotenv import load_dotenv
-load_dotenv()
 import pyupbit
 import pandas as pd
 import pandas_ta as ta
@@ -11,19 +10,26 @@ import time
 from datetime import datetime
 import slack_notification as sn
 
+# 거래할 코인 티커
+COIN_TICKER = "ETH"
+COIN_TICKER_WITH_KRW = f'KRW-{COIN_TICKER}'
+
+# load env
+load_dotenv()
+
 # Setup
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 upbit = pyupbit.Upbit(os.getenv("UPBIT_ACCESS_KEY"), os.getenv("UPBIT_SECRET_KEY"))
 
 def get_current_status():
-    orderbook = pyupbit.get_orderbook(ticker="KRW-BTC")
+    orderbook = pyupbit.get_orderbook(ticker=COIN_TICKER_WITH_KRW)
     current_time = orderbook['timestamp']
     btc_balance = 0
     krw_balance = 0
     btc_avg_buy_price = 0
     balances = upbit.get_balances()
     for b in balances:
-        if b['currency'] == "BTC":
+        if b['currency'] == COIN_TICKER:
             btc_balance = b['balance']
             btc_avg_buy_price = b['avg_buy_price']
         if b['currency'] == "KRW":
@@ -35,8 +41,8 @@ def get_current_status():
 
 def fetch_and_prepare_data():
     # Fetch data
-    df_daily = pyupbit.get_ohlcv("KRW-BTC", "day", count=30)
-    df_hourly = pyupbit.get_ohlcv("KRW-BTC", interval="minute60", count=24)
+    df_daily = pyupbit.get_ohlcv(COIN_TICKER_WITH_KRW, "day", count=30)
+    df_hourly = pyupbit.get_ohlcv(COIN_TICKER_WITH_KRW, interval="minute60", count=24)
 
     # Define a helper function to add indicators
     def add_indicators(df):
@@ -129,7 +135,7 @@ def execute_buy(percentage):
         # 업비트 최소 거래 금액 5000원 이상
         if amount > 5000:
             print(f"구매 실행. 현금보유량: {balance_krw}, 실제 매수량: {amount*0.9995}")
-            result = upbit.buy_market_order("KRW-BTC", amount*0.9995)
+            result = upbit.buy_market_order(COIN_TICKER_WITH_KRW, amount*0.9995)
             print("Buy order successful:", result)
     except Exception as e:
         print(f"Failed to execute buy order: {e}")
@@ -137,16 +143,16 @@ def execute_buy(percentage):
 def execute_sell(percentage):
     print("Attempting to sell BTC...")
     try:
-        btc_balance = upbit.get_balance("BTC") # 현재 보유한 코인 수
+        btc_balance = upbit.get_balance(COIN_TICKER) # 현재 보유한 코인 수
         percentage = percentage / 100 # 백분율 만들기
         btc_to_sell = btc_balance * percentage
 
         print(f"sell. current_balance: {btc_balance}, percentage: {percentage*100}%, btc_to_sell: {btc_to_sell}")
 
-        current_price = pyupbit.get_orderbook(ticker="KRW-BTC")['orderbook_units'][0]["ask_price"]
+        current_price = pyupbit.get_orderbook(ticker=COIN_TICKER_WITH_KRW)['orderbook_units'][0]["ask_price"]
         if current_price*btc_to_sell > 5000:
             print(f"판매 실행. 보유량: {btc_balance}, 실제 매도량: {btc_to_sell}")
-            result = upbit.sell_market_order("KRW-BTC", btc_to_sell)
+            result = upbit.sell_market_order(COIN_TICKER_WITH_KRW, btc_to_sell)
             print("Sell order successful:", result)
         else:
             print(f"판매 실패. 보유량: {btc_balance}, 실제 매도량: {btc_to_sell}")
@@ -173,16 +179,17 @@ def make_decision_and_execute():
         elif decision == "sell":
             execute_sell(percentage)
 
-        # slack notification
-        sn.send_msg(f"decision: {decision} \npercentage: {percentage} \nreason: {reason}")
+        # Slack notification
+        sn.send_msg(f"coin: {COIN_TICKER} \ndecision: {decision} \npercentage: {percentage} \nreason: {reason}")
 
     except Exception as e:
         print(f"Failed to parse the advice as JSON: {e}")
 
 if __name__ == "__main__":
     print("started...")
-    make_decision_and_execute()
-    schedule.every().hour.at(":01").do(make_decision_and_execute)
+    #make_decision_and_execute()
+    #schedule.every().hour.at(":01").do(make_decision_and_execute)  # 매 시간 1분에 실행
+    schedule.every().hour.at("00:01").do(make_decision_and_execute)  # 매 시간 1초에 실행
 
     while True:
         schedule.run_pending()

@@ -10,7 +10,7 @@ def send_msg(msg):
     url = os.getenv("SLACK_API")
     tail = "<https://upbit.com/exchange?code=CRIX.UPBIT.KRW-BTC|현재시세>"
     message = (f"{msg} \n {tail}") 
-    title = "Advisor say..."
+    title = "GPT investment expert say..."
     slack_data = {
         "username": "AutoTradeNotificationBot",
         "icon_emoji": ":moneybag:",
