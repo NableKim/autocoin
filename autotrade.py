@@ -10,6 +10,11 @@ import time
 from datetime import datetime
 import slack_notification as sn
 
+"""
+@TODO
+현재 Prompt 지시문에는 비트코인 기준으로 설명되어 있음.
+이에 '암호화폐'라는 범용적인 용어를 쓰도록 변경할 필요가 있음.
+"""
 # 거래할 코인 티커
 COIN_TICKER = "ETH"
 COIN_TICKER_WITH_KRW = f'KRW-{COIN_TICKER}'
@@ -42,7 +47,8 @@ def get_current_status():
 def fetch_and_prepare_data():
     # Fetch data
     df_daily = pyupbit.get_ohlcv(COIN_TICKER_WITH_KRW, "day", count=30)
-    df_hourly = pyupbit.get_ohlcv(COIN_TICKER_WITH_KRW, interval="minute60", count=24)
+    # df_hourly = pyupbit.get_ohlcv(COIN_TICKER_WITH_KRW, interval="minute60", count=24)
+    df_4_hourly = pyupbit.get_ohlcv(COIN_TICKER_WITH_KRW, interval="minute240", count=24)
 
     # Define a helper function to add indicators
     def add_indicators(df):
@@ -77,9 +83,10 @@ def fetch_and_prepare_data():
 
     # Add indicators to both dataframes
     df_daily = add_indicators(df_daily)
-    df_hourly = add_indicators(df_hourly)
+    # df_hourly = add_indicators(df_hourly)
+    df_4_hourly = add_indicators(df_4_hourly)
 
-    combined_df = pd.concat([df_daily, df_hourly], keys=['daily', 'hourly'])
+    combined_df = pd.concat([df_daily, df_4_hourly], keys=['daily', '4_hourly'])
     combined_data = combined_df.to_json(orient='split')
 
     # make combined data as string and print length
@@ -180,16 +187,15 @@ def make_decision_and_execute():
             execute_sell(percentage)
 
         # Slack notification
-        sn.send_msg(f"coin: {COIN_TICKER} \ndecision: {decision} \npercentage: {percentage} \nreason: {reason}")
+        sn.send_msg(f"coin: {COIN_TICKER} \ndecision: {decision} \ncurrent_price: {pyupbit.get_current_price(COIN_TICKER_WITH_KRW)}\npercentage: {percentage} \nreason: {reason}")
 
     except Exception as e:
         print(f"Failed to parse the advice as JSON: {e}")
 
 if __name__ == "__main__":
     print("started...")
-    #make_decision_and_execute()
-    #schedule.every().hour.at(":01").do(make_decision_and_execute)  # 매 시간 1분에 실행
-    schedule.every().hour.at("00:01").do(make_decision_and_execute)  # 매 시간 1초에 실행
+    make_decision_and_execute()
+    schedule.every(4).hours.do(make_decision_and_execute) # 4시간마다 실행
 
     while True:
         schedule.run_pending()
